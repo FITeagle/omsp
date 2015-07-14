@@ -1,0 +1,75 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <name>FITeagle :: OMSP Interface</name>
+  <groupId>org.fiteagle.omsp</groupId>
+  <artifactId>omsp</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <packaging>war</packaging>
+
+  <parent>
+      <groupId>org.fiteagle</groupId>
+      <artifactId>bootstrap</artifactId>
+      <version>0.1-SNAPSHOT</version>
+  </parent>
+
+  <repositories>
+    <repository>
+      <id>sonatype</id>
+      <url>https://oss.sonatype.org/content/groups/public/</url>
+    </repository>
+    <repository>
+      <id>fiteagle-repo</id>
+      <url>http://fiteagle.org/maven</url>
+    </repository>
+  </repositories>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <version.jboss.maven.plugin>7.3.Final</version.jboss.maven.plugin>
+    <version.jboss.spec.javaee.6.0>3.0.2.Final</version.jboss.spec.javaee.6.0>
+    <version.war.plugin>2.1.1</version.war.plugin>
+    <maven.compiler.target>1.7</maven.compiler.target>
+    <maven.compiler.source>1.7</maven.compiler.source>
+  </properties> 
+
+  <!-- <dependencies>
+    <dependency>
+      <groupId>org.jboss.resteasy</groupId>
+      <artifactId>resteasy-jaxrs</artifactId>
+      <version>3.0.6.Final</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies> -->
+
+  <build>
+    <sourceDirectory>src</sourceDirectory>
+    <plugins>
+      <!-- <plugin>
+        <groupId>org.wildfly.plugins</groupId>
+        <artifactId>wildfly-maven-plugin</artifactId>
+        <version>${wildfly.version}</version>
+        <configuration>
+          <skip>false</skip>
+          <filename>${project.build.finalName}.war</filename>
+        </configuration>
+      </plugin> -->
+      <plugin>
+        <artifactId>maven-war-plugin</artifactId>
+        <version>${version.war.plugin}</version>
+        <configuration>
+          <failOnMissingWebXml>false</failOnMissingWebXml>
+        </configuration>
+      </plugin>
+      <plugin>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.0</version>
+        <configuration>
+          <source>${maven.compiler.source}</source>
+          <target>${maven.compiler.target}</target>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
+
+
