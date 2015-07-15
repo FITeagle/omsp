@@ -32,19 +32,24 @@
     <maven.compiler.source>1.7</maven.compiler.source>
   </properties> 
 
-  <!-- <dependencies>
+ <dependencies>
     <dependency>
+      <groupId>org.fiteagle</groupId>
+      <artifactId>api</artifactId>
+      <version>0.1-SNAPSHOT</version>
+    </dependency>
+    <!-- <dependency>
       <groupId>org.jboss.resteasy</groupId>
       <artifactId>resteasy-jaxrs</artifactId>
       <version>3.0.6.Final</version>
       <scope>provided</scope>
-    </dependency>
-  </dependencies> -->
+    </dependency> -->
+  </dependencies>
 
   <build>
     <sourceDirectory>src</sourceDirectory>
     <plugins>
-      <!-- <plugin>
+      <plugin>
         <groupId>org.wildfly.plugins</groupId>
         <artifactId>wildfly-maven-plugin</artifactId>
         <version>${wildfly.version}</version>
@@ -52,7 +57,7 @@
           <skip>false</skip>
           <filename>${project.build.finalName}.war</filename>
         </configuration>
-      </plugin> -->
+      </plugin>
       <plugin>
         <artifactId>maven-war-plugin</artifactId>
         <version>${version.war.plugin}</version>
