@@ -1,9 +1,9 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <name>FITeagle :: OMSP Interface</name>
-  <groupId>org.fiteagle.omsp</groupId>
+  <groupId>org.fiteagle</groupId>
   <artifactId>omsp</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>0.1-SNAPSHOT</version>
   <packaging>war</packaging>
 
   <parent>
@@ -33,20 +33,21 @@
   </properties> 
 
  <dependencies>
-    <dependency>
+     <dependency>
       <groupId>org.fiteagle</groupId>
       <artifactId>api</artifactId>
       <version>0.1-SNAPSHOT</version>
     </dependency>
-    <!-- <dependency>
+   <dependency>
       <groupId>org.jboss.resteasy</groupId>
       <artifactId>resteasy-jaxrs</artifactId>
       <version>3.0.6.Final</version>
       <scope>provided</scope>
-    </dependency> -->
+    </dependency>
   </dependencies>
 
   <build>
+    <finalName>${project.artifactId}</finalName>
     <sourceDirectory>src</sourceDirectory>
     <plugins>
       <plugin>

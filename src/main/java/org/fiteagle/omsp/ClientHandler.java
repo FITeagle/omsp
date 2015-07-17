@@ -1,5 +1,10 @@
 package org.fiteagle.omsp;
 
+import info.openmultinet.ontology.vocabulary.Omn;
+import info.openmultinet.ontology.vocabulary.Omn_domain_pc;
+import info.openmultinet.ontology.vocabulary.Omn_lifecycle;
+import info.openmultinet.ontology.vocabulary.Omn_monitoring;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -18,14 +23,10 @@ import org.fiteagle.api.core.MessageUtil;
 
 import com.hp.hpl.jena.rdf.model.Model;
 import com.hp.hpl.jena.rdf.model.ModelFactory;
+import com.hp.hpl.jena.vocabulary.RDF;
 
 
 public class ClientHandler implements Runnable {
-	
-	@Inject
-	private JMSContext context;
-	@Resource(mappedName = IMessageBus.TOPIC_CORE_NAME)
-	private Topic topic;
 	
 	enum STATE {BINARY_DATA, TEXT_DATA, HEADER, PROTOCOL_ERROR, BINARY_SKIP} ;
 	STATE state, content ;
@@ -33,12 +34,14 @@ public class ClientHandler implements Runnable {
 	List<Model> triples = new ArrayList<Model>() ;
 	Model model = ModelFactory.createDefaultModel() ; 
 	
+	OMSPInterface omspi ;
+	
 	public ClientHandler(Socket socket){
 		this.socket = socket ;
 		//this.state = STATE.HEADER ;
 		//this.content = STATE.TEXT_DATA ;
 	}
-	
+
 	@Override
     public void run() {
 		try{
@@ -64,9 +67,11 @@ public class ClientHandler implements Runnable {
 						
 			//process_header(header) ;
 			if(process_text(data)){
-				createInformMsg() ;
+				omspi.createInformMsg(model) ;
 			}
 			
+			System.out.println("ClientHandler: Thread finished...");
+			return ;
 		}catch (IOException e) {
             System.err.println("Could not read the incoming stream.");
             System.exit(-1);
@@ -78,8 +83,8 @@ public class ClientHandler implements Runnable {
 		// later
 	}
 
-	private boolean process_text(List<String> msg){
-		System.out.println("Processing data...") ;
+	public boolean process_text(List<String> msg){
+		System.out.println("ClientHandler: Processing data...") ;
 		String[] values ;
 		String subject, predicate, object ;
 		
@@ -91,30 +96,34 @@ public class ClientHandler implements Runnable {
 			System.out.println(subject + " " + predicate + " " + object) ;
 			if(!addToRDFModel(subject,predicate,object)) return false ;
 		}
+		
+		//createInformMsg() ;
 		return true ;
 	}
 
 	private void process_binary(List<String> msg){
 		//later
 	}
-	
-	private void createInformMsg(){	
-		if(!model.isEmpty()){
-			Message request = MessageUtil.createRDFMessage(model, IMessageBus.TYPE_INFORM, IMessageBus.TARGET_ADAPTER, IMessageBus.SERIALIZATION_TURTLE, null, context);
-			context.createProducer().send(topic, request);
-			System.out.println("sending inform message ");
-		}
-	}
-	
+		
 	private boolean addToRDFModel(String subject, String predicate, String object){
 		try{
-			com.hp.hpl.jena.rdf.model.Resource sub = model.createResource(subject) ;
-			sub.addProperty(model.createProperty(predicate), object) ;
+			com.hp.hpl.jena.rdf.model.Resource sub = model.createResource(subject);
+			sub.addProperty(model.createProperty(predicate), object);
+			
 		}catch(Exception e){
 			return false ;
 		}
 		return true ;	
 	}
+
+	public OMSPInterface getOmspI() {
+		return omspi;
+	}
+
+	public void setOmspI(OMSPInterface omspi) {
+		this.omspi = omspi;
+	}
+	
 
 
 
