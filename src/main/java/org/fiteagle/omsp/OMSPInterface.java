@@ -6,6 +6,7 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.logging.Logger;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
@@ -34,6 +35,7 @@ public class OMSPInterface {
 	@Resource(mappedName = IMessageBus.TOPIC_CORE_NAME)
 	private Topic topic;
 	
+	private static final Logger LOGGER = Logger.getLogger(OMSPInterface.class.toString());
 	ClientHandler clienthandler ;
 	
 	@PostConstruct
@@ -70,7 +72,7 @@ public class OMSPInterface {
 		try{
 			System.out.println("OMSPInterface: Creating inform message...");
 			if(!model.isEmpty()){
-				Message request = MessageUtil.createRDFMessage(model, IMessageBus.TYPE_INFORM, IMessageBus.TARGET_ORCHESTRATOR, IMessageBus.SERIALIZATION_TURTLE, null, context);
+				final Message request = MessageUtil.createRDFMessage(model, IMessageBus.TYPE_INFORM, IMessageBus.TARGET_ORCHESTRATOR, IMessageBus.SERIALIZATION_TURTLE, null, context);
 				context.createProducer().send(topic, request);
 				System.out.println("OMSPInterface: Sending inform message... ");
 			}

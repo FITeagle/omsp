@@ -44,6 +44,11 @@
       <version>3.0.6.Final</version>
       <scope>provided</scope>
     </dependency>
+    <dependency>
+    <groupId>org.fiteagle.core</groupId>
+    <artifactId>tripletStoreAccessor</artifactId>
+    <version>0.1-SNAPSHOT</version>
+    </dependency>
   </dependencies>
 
   <build>
