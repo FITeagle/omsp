@@ -68,6 +68,7 @@ public class ClientHandler implements Runnable {
 	Model model = ModelFactory.createDefaultModel() ; 
 	List<Map<String, String>> triples = new ArrayList<Map<String, String>>();
 	String domain, starttime, senderid, appname, server_ts ;
+	String domain_uri, sender_uri, service_uri = null ;
 	int seqNo = 0 ;
 	
 	String prefix = "http://localhost/" ;
@@ -103,6 +104,7 @@ public class ClientHandler implements Runnable {
 					EndOfHeader = true ;
 				}else if(!s.isEmpty() && EndOfHeader && EndOfStream(s)){
 					process_stream() ;
+					triples.clear() ;
 				}
 			}			
 			return ;
@@ -169,22 +171,25 @@ public class ClientHandler implements Runnable {
 		return true ;
 	}
 	
-	//TripletStoreAccessor updateModel(model);
-
 	public boolean process_stream(){
-		// look in triple store if domain and start time exist
-		String domain_uri = prefix + UUID.randomUUID().toString() ;
-		add_domain(domain_uri, domain_exist(domain)) ;
-		// look in triple store if sender id exists
-		String sender_uri = prefix + UUID.randomUUID().toString() ;
-		add_sender(sender_uri, sender_exist(senderid)) ;
+		if(domain_uri != null){
+			add_domain(domain_uri, false) ;
+		}else{
+			domain_uri = domain_exist(domain) ;
+			if(domain_uri == null) domain_uri = prefix + "domain/" + UUID.randomUUID().toString() ;
+			add_domain(domain_uri, true) ;
+		}
+		if(sender_uri != null){
+			add_sender(sender_uri, false) ;
+		}else{
+			sender_uri = sender_exist(senderid) ;
+			if(sender_uri == null) sender_uri = prefix + "sender/" + UUID.randomUUID().toString() ;
+			add_sender(sender_uri, true) ;
+		}
+
 		add_timestamp() ;
 		add_seqNo() ;
-		
-		// look in triple store if metric exists
-		
-		// else if nothing exists
-
+			
 		omspi.createInformMsg(model) ;
 		return true ;
 	}
@@ -193,35 +198,30 @@ public class ClientHandler implements Runnable {
 		//later
 	}
 	
-	private void add_domain(String domain_uri, String domain_exist){
+	private void add_domain(String domain_uri, boolean new_domain){
 		for (int i=0;i<triples.size();i++){
 			String subject = triples.get(i).get("subject") ;
 			String predicate = triples.get(i).get("predicate") ;
 			String object = triples.get(i).get("object") ;
 			if(predicate.matches("rdf:type") && object.contains("Measurement") && !object.contains("MeasurementData")){
-				if(domain_exist != null){
-					addToRDFModel(subject, Omn_monitoring.sentFrom, domain_exist) ;
-					add_starttime(domain_exist) ;
-				}else{
-					addToRDFModel(subject, Omn_monitoring.sentFrom, domain_uri) ;
+				addToRDFModel(subject, Omn_monitoring.sentFrom, domain_uri) ;
+				add_starttime(domain_uri) ;
+				if(new_domain){
 					addToRDFModel(domain_uri, RDF.type, Omn_monitoring_genericconcepts.MonitoringDomain) ;
 					addToRDFModel(domain_uri, RDFS.label, domain) ;
-					add_starttime(domain_uri) ;
 				}
 			}
 		}
 	}
 	
-	private void add_sender(String sender_uri, String sender_exist){
+	private void add_sender(String sender_uri, boolean new_sender){
 		for (int i=0;i<triples.size();i++){
 			String subject = triples.get(i).get("subject") ;
 			String predicate = triples.get(i).get("predicate") ;
 			String object = triples.get(i).get("object") ;
 			if(predicate.matches("rdf:type") && object.contains("Measurement") && !object.contains("MeasurementData")){
-				if(sender_exist != null){
-					addToRDFModel(subject, Omn_monitoring.sentBy, sender_exist) ;
-				}else{
-					addToRDFModel(subject, Omn_monitoring.sentBy, sender_uri) ;
+				addToRDFModel(subject, Omn_monitoring.sentBy, sender_uri) ;
+				if(new_sender){
 					addToRDFModel(sender_uri, RDF.type, Omn_monitoring.Tool) ;
 					addToRDFModel(sender_uri, RDFS.label, senderid) ;
 				}
@@ -247,15 +247,15 @@ public class ClientHandler implements Runnable {
 	}
 	
 	private void add_starttime(String domain_uri){
-		String service_uri = service_exist(domain_uri) ;
-		if(service_uri != null){
-			addToRDFModel(domain_uri, Omn.hasService, service_uri) ;
-			addToRDFModel(service_uri, Omn_lifecycle.startTime, starttime) ;
-		}else{
-			service_uri = prefix + UUID.randomUUID().toString() ;
+		if(service_uri == null){
+			service_uri = service_exist(domain_uri) ;
+			if(service_uri == null) service_uri = prefix + UUID.randomUUID().toString() ;
 			addToRDFModel(domain_uri, Omn.hasService, service_uri) ;
 			addToRDFModel(service_uri,RDF.type, Omn_monitoring.MonitoringService) ;
 			addToRDFModel(service_uri, Omn_lifecycle.startTime, starttime) ;
+		}else{
+			addToRDFModel(domain_uri, Omn.hasService, service_uri) ;
+			//addToRDFModel(service_uri, Omn_lifecycle.startTime, starttime) ;	
 		}		
 	}
 	
@@ -296,18 +296,62 @@ public class ClientHandler implements Runnable {
 	}
 	
 	private String sender_exist(String label){
+		String existingValue = "?sender <http://www.w3.org/2000/01/rdf-schema#label> ?label .";
+		String filter = "filter(regex(?label,\"" + label + "\")) ." ;
+		
+	    String queryString = "SELECT ?sender " + "WHERE { "+existingValue+ " " + filter + " }";
+		try {
+			ResultSet rs = QueryExecuter.executeSparqlSelectQuery(queryString);
+			if(rs.hasNext()){
+				QuerySolution row = rs.next();
+				RDFNode value = row.get("sender");		
+				return value.toString() ;
+			}else return null ; 
+			
+		} catch (org.fiteagle.api.tripletStoreAccessor.TripletStoreAccessor.ResourceRepositoryException e) {
+			LOGGER.log(Level.SEVERE, "Could not query triple store.");
+		}
 		return null ;
 	}
-	
-	private String metric_exist(String label){
-		return null ;
-	}
-	
-	private String starttime_exist(String label){
+		
+	private String starttime_exist(String sender){
+		/*String existingValue = "?measurement <http://open-multinet.info/ontology/omn-monitoring#sentBy> ?sender . " + 
+					"?sender <http://www.w3.org/2000/01/rdf-schema#label> ?label ." + 
+					"?measurement <http://open-multinet.info/ontology/omn-monitoring#sentFrom> ?domain . " +
+					"?domain <http://open-multinet.info/ontology/omn#hasService> ?service . " +
+					"?service <http://open-multinet.info/ontology/omn-lifecycle#StartTime> ?value . " ;
+		String filter = "filter(regex(?label,\"" + label + "\")) ." ;
+		
+	    String queryString = "SELECT ?sender " + "WHERE { "+existingValue+ " " + filter + " }";
+		try {
+			ResultSet rs = QueryExecuter.executeSparqlSelectQuery(queryString);
+			if(rs.hasNext()){
+				QuerySolution row = rs.next();
+				RDFNode value = row.get("sender");		
+				return value.toString() ;
+			}else return null ; 
+			
+		} catch (org.fiteagle.api.tripletStoreAccessor.TripletStoreAccessor.ResourceRepositoryException e) {
+			LOGGER.log(Level.SEVERE, "Could not query triple store.");
+		}*/
 		return null ;
 	}
 	
 	private String service_exist(String domain_uri){
+		String existingValue = "<" +domain_uri+ "> <http://open-multinet.info/ontology/omn#hasService> ?service .";
+		
+	    String queryString = "SELECT ?service " + "WHERE { "+existingValue+ " }";
+		try {
+			ResultSet rs = QueryExecuter.executeSparqlSelectQuery(queryString);
+			if(rs.hasNext()){
+				QuerySolution row = rs.next();
+				RDFNode value = row.get("service");		
+				return value.toString() ;
+			}else return null ; 
+			
+		} catch (org.fiteagle.api.tripletStoreAccessor.TripletStoreAccessor.ResourceRepositoryException e) {
+			LOGGER.log(Level.SEVERE, "Could not query triple store.");
+		}
 		return null ;
 	}
 	
