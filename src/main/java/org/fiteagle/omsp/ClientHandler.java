@@ -2,8 +2,10 @@ package org.fiteagle.omsp;
 
 import info.openmultinet.ontology.vocabulary.Omn;
 import info.openmultinet.ontology.vocabulary.Omn_domain_pc;
+import info.openmultinet.ontology.vocabulary.Omn_federation;
 import info.openmultinet.ontology.vocabulary.Omn_lifecycle;
 import info.openmultinet.ontology.vocabulary.Omn_monitoring;
+import info.openmultinet.ontology.vocabulary.Omn_monitoring_genericconcepts;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -26,10 +28,30 @@ import javax.jms.Topic;
 
 import org.fiteagle.api.core.IMessageBus;
 import org.fiteagle.api.core.MessageUtil;
+import org.fiteagle.api.tripletStoreAccessor.QueryExecuter;
 
+import com.hp.hpl.jena.graph.Node;
+import com.hp.hpl.jena.graph.Node_Variable;
+import com.hp.hpl.jena.graph.Triple;
+import com.hp.hpl.jena.ontology.ObjectProperty;
+import com.hp.hpl.jena.ontology.OntClass;
+import com.hp.hpl.jena.query.Query;
+import com.hp.hpl.jena.query.QueryExecution;
+import com.hp.hpl.jena.query.QueryExecutionFactory;
+import com.hp.hpl.jena.query.QueryFactory;
+import com.hp.hpl.jena.query.QuerySolution;
+import com.hp.hpl.jena.query.ResultSet;
+import com.hp.hpl.jena.rdf.model.Literal;
 import com.hp.hpl.jena.rdf.model.Model;
 import com.hp.hpl.jena.rdf.model.ModelFactory;
+import com.hp.hpl.jena.rdf.model.Property;
+import com.hp.hpl.jena.rdf.model.RDFNode;
+import com.hp.hpl.jena.rdf.model.ResourceFactory;
+import com.hp.hpl.jena.sparql.core.BasicPattern;
+import com.hp.hpl.jena.sparql.syntax.ElementGroup;
+import com.hp.hpl.jena.sparql.syntax.Template;
 import com.hp.hpl.jena.vocabulary.RDF;
+import com.hp.hpl.jena.vocabulary.RDFS;
 
 import org.fiteagle.core.tripletStoreAccessor.TripletStoreAccessor;
 import org.fiteagle.core.tripletStoreAccessor.TripletStoreAccessor.ResourceRepositoryException;
@@ -44,9 +66,9 @@ public class ClientHandler implements Runnable {
 	OMSPInterface omspi ;
 	
 	Model model = ModelFactory.createDefaultModel() ; 
-	List<String> data, header = new ArrayList<String>();
 	List<Map<String, String>> triples = new ArrayList<Map<String, String>>();
-	String domain, starttime, senderid, appname ;
+	String domain, starttime, senderid, appname, server_ts ;
+	int seqNo = 0 ;
 	
 	String prefix = "http://localhost/" ;
 	String omn_monitoring_genericconcepts = "http://open-multinet.info/ontology/omn-monitoring-genericconcepts#" ;
@@ -67,7 +89,7 @@ public class ClientHandler implements Runnable {
 			boolean EndOfHeader = false ;
 			
 			while ((s = input.readLine())!= null){
-				if(!s.isEmpty() && !EndOfHeader && !EndOfStream(s)){
+				if(!s.isEmpty() && !EndOfHeader){
 					if(!process_header(s)){
 						LOGGER.log(Level.SEVERE, "Could not process stream header.");
 						return ;
@@ -116,16 +138,14 @@ public class ClientHandler implements Runnable {
 			}
 			else if(line.contains("schema") && line.contains("1")){
 				System.out.println("checking schema") ;
-				String[] list = line.split(":",1)[1].split(" ") ;
-				System.out.println(list[0] + list[1] + list[2]) ;
-				if(list.length != 5) return false ;			
-				for (String item : list){
-					if(!item.split(":")[1].matches("string")) return false ;
+				String[] list = line.split(":",2)[1].split(" ") ;
+				if(list.length != 6) return false ;			
+				for (int i=3;i<list.length;i++){
+					if(!list[i].split(":")[1].matches("string")) return false ;
 				}
 				System.out.println("schema verified") ;
 			}
 		}catch(PatternSyntaxException e){
-			LOGGER.log(Level.SEVERE, "Could not process stream header.");
 			return false ;
 		}
 		
@@ -152,15 +172,19 @@ public class ClientHandler implements Runnable {
 	//TripletStoreAccessor updateModel(model);
 
 	public boolean process_stream(){
-		// look in triple store if domain exists
+		// look in triple store if domain and start time exist
+		String domain_uri = prefix + UUID.randomUUID().toString() ;
+		add_domain(domain_uri, domain_exist(domain)) ;
 		// look in triple store if sender id exists
-		// look in triple store if start time exists
+		String sender_uri = prefix + UUID.randomUUID().toString() ;
+		add_sender(sender_uri, sender_exist(senderid)) ;
+		add_timestamp() ;
+		add_seqNo() ;
+		
 		// look in triple store if metric exists
 		
 		// else if nothing exists
-		//String domain_uri = prefix + UUID.randomUUID().toString() ;
-		//String sender_uri = prefix + UUID.randomUUID().toString() ;
-		//add_data(domain_uri, sender_uri) ;
+
 		omspi.createInformMsg(model) ;
 		return true ;
 	}
@@ -168,7 +192,125 @@ public class ClientHandler implements Runnable {
 	private void process_binary(List<String> msg){
 		//later
 	}
+	
+	private void add_domain(String domain_uri, String domain_exist){
+		for (int i=0;i<triples.size();i++){
+			String subject = triples.get(i).get("subject") ;
+			String predicate = triples.get(i).get("predicate") ;
+			String object = triples.get(i).get("object") ;
+			if(predicate.matches("rdf:type") && object.contains("Measurement") && !object.contains("MeasurementData")){
+				if(domain_exist != null){
+					addToRDFModel(subject, Omn_monitoring.sentFrom, domain_exist) ;
+					add_starttime(domain_exist) ;
+				}else{
+					addToRDFModel(subject, Omn_monitoring.sentFrom, domain_uri) ;
+					addToRDFModel(domain_uri, RDF.type, Omn_monitoring_genericconcepts.MonitoringDomain) ;
+					addToRDFModel(domain_uri, RDFS.label, domain) ;
+					add_starttime(domain_uri) ;
+				}
+			}
+		}
+	}
+	
+	private void add_sender(String sender_uri, String sender_exist){
+		for (int i=0;i<triples.size();i++){
+			String subject = triples.get(i).get("subject") ;
+			String predicate = triples.get(i).get("predicate") ;
+			String object = triples.get(i).get("object") ;
+			if(predicate.matches("rdf:type") && object.contains("Measurement") && !object.contains("MeasurementData")){
+				if(sender_exist != null){
+					addToRDFModel(subject, Omn_monitoring.sentBy, sender_exist) ;
+				}else{
+					addToRDFModel(subject, Omn_monitoring.sentBy, sender_uri) ;
+					addToRDFModel(sender_uri, RDF.type, Omn_monitoring.Tool) ;
+					addToRDFModel(sender_uri, RDFS.label, senderid) ;
+				}
+			}
+		}
+	}
+	
+	private void add_timestamp(){
+		for (int i=0;i<triples.size();i++){
+			String subject = triples.get(i).get("subject") ;
+			String predicate = triples.get(i).get("predicate") ;
+			String object = triples.get(i).get("object") ;
+			if(predicate.matches("rdf:type") && object.contains("Measurement") && !object.contains("MeasurementData")){
+				// add client ts
+				addToRDFModel(subject, 
+						omn_monitoring + "elapsedTimeAtClientSinceExperimentStarted", triples.get(i).get("client_timestamp")) ;		
+				// add server ts
+				server_ts = "0" ;
+				addToRDFModel(subject, 
+						omn_monitoring + "elapsedTimeAtServerSinceExperimentStarted", server_ts) ;		
+			}
+		}
+	}
+	
+	private void add_starttime(String domain_uri){
+		String service_uri = service_exist(domain_uri) ;
+		if(service_uri != null){
+			addToRDFModel(domain_uri, Omn.hasService, service_uri) ;
+			addToRDFModel(service_uri, Omn_lifecycle.startTime, starttime) ;
+		}else{
+			service_uri = prefix + UUID.randomUUID().toString() ;
+			addToRDFModel(domain_uri, Omn.hasService, service_uri) ;
+			addToRDFModel(service_uri,RDF.type, Omn_monitoring.MonitoringService) ;
+			addToRDFModel(service_uri, Omn_lifecycle.startTime, starttime) ;
+		}		
+	}
+	
+	private void add_seqNo(){
+		for (int i=0;i<triples.size();i++){
+			String subject = triples.get(i).get("subject") ;
+			String predicate = triples.get(i).get("predicate") ;
+			String object = triples.get(i).get("object") ;
+			if(predicate.matches("rdf:type") && object.contains("Measurement") && !object.contains("MeasurementData")){
+				addToRDFModel(subject, Omn.sequenceNumber, Integer.toString(seqNo)) ;	
+				seqNo++ ;
+			}
+		}
+	}
+	
+	private boolean EndOfStream(String line){
+		if(line.split("\\s+").length > 3) return false ; else return true ;
+	}
+	
+	private String domain_exist(String label){
+		String existingValue = "?domain <http://www.w3.org/2000/01/rdf-schema#label> ?label .";
+		String filter = "filter(regex(?label,\"" + label + "\")) ." ;
 		
+	    String queryString = "SELECT ?domain " + "WHERE { "+existingValue+ " " + filter + " }";
+		try {
+			ResultSet rs = QueryExecuter.executeSparqlSelectQuery(queryString);
+			if(rs.hasNext()){
+				QuerySolution row = rs.next();
+				RDFNode value = row.get("domain");		
+				return value.toString() ;
+			}else return null ; 
+			
+		} catch (org.fiteagle.api.tripletStoreAccessor.TripletStoreAccessor.ResourceRepositoryException e) {
+			LOGGER.log(Level.SEVERE, "Could not query triple store.");
+		}
+		
+		return null ;
+	}
+	
+	private String sender_exist(String label){
+		return null ;
+	}
+	
+	private String metric_exist(String label){
+		return null ;
+	}
+	
+	private String starttime_exist(String label){
+		return null ;
+	}
+	
+	private String service_exist(String domain_uri){
+		return null ;
+	}
+	
 	private boolean addToRDFModel(String subject, String predicate, String object){
 		try{
 			com.hp.hpl.jena.rdf.model.Resource sub = model.createResource(subject);
@@ -179,34 +321,38 @@ public class ClientHandler implements Runnable {
 		}
 		return true ;	
 	}
-	
-	private void add_data(String domain_uri, String sender_uri){
-		for (int i=0;i<triples.size();i++){
-			if(triples.get(i).get("predicate").matches("rdf:type") && triples.get(i).get("object").contains("Measurement")){
-				// add domain
-				addToRDFModel(triples.get(i).get("subject"), omn_monitoring + "sentFrom", domain_uri) ;
-				// add sender
-				addToRDFModel(triples.get(i).get("subject"), omn_monitoring + "sentBy", sender_uri) ;
-				// add client timestamp
-				addToRDFModel(triples.get(i).get("subject"), omn_monitoring + "elapsedTimeAtClientSinceExperimentStarted", triples.get(i).get("client_timestamp")) ;			
-				
-			}
+
+	private boolean addToRDFModel(String subject, ObjectProperty predicate, String object){
+		try{
+			com.hp.hpl.jena.rdf.model.Resource sub = model.createResource(subject);
+			sub.addProperty(predicate, object);
+			
+		}catch(Exception e){
+			return false ;
 		}
+		return true ;	
 	}
 	
-	private void add_sender(String sender_uri, boolean sender_exists){
-		for (int i=0;i<triples.size();i++){
-			if(triples.get(i).get("predicate").matches("rdf:type") && triples.get(i).get("object").contains("Measurement")){
-				addToRDFModel(triples.get(i).get("subject"), omn_monitoring + "sentFrom", sender_uri) ;
-				if(!sender_exists) addToRDFModel(sender_uri, rdf_type, omn_monitoring_genericconcepts + "MonitoringDomain") ;
-				addToRDFModel(triples.get(i).get("subject"), 
-						omn_monitoring + "elapsedTimeAtClientSinceExperimentStarted", data.get(i).split("\\s+")[0]) ;			
-			}
+	private boolean addToRDFModel(String subject, Property predicate, OntClass object){
+		try{
+			com.hp.hpl.jena.rdf.model.Resource sub = model.createResource(subject);
+			sub.addProperty(predicate, object);
+			
+		}catch(Exception e){
+			return false ;
 		}
+		return true ;	
 	}
 	
-	private boolean EndOfStream(String line){
-		if(line.split("\\s+").length > 3) return false ; else return true ;
+	private boolean addToRDFModel(String subject, Property predicate, String object){
+		try{
+			com.hp.hpl.jena.rdf.model.Resource sub = model.createResource(subject);
+			sub.addProperty(predicate, object);
+			
+		}catch(Exception e){
+			return false ;
+		}
+		return true ;	
 	}
 
 	public OMSPInterface getOmspI() {
