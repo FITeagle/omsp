@@ -172,19 +172,25 @@ public class ClientHandler implements Runnable {
 	}
 	
 	public boolean process_stream(){
-		if(domain_uri != null){
-			add_domain(domain_uri, false) ;
-		}else{
-			domain_uri = domain_exist(domain) ;
-			if(domain_uri == null) domain_uri = prefix + "domain/" + UUID.randomUUID().toString() ;
-			add_domain(domain_uri, true) ;
-		}
 		if(sender_uri != null){
+			System.out.println("sender uri exists...") ;
 			add_sender(sender_uri, false) ;
 		}else{
+			System.out.println("sender uri is null...") ;
 			sender_uri = sender_exist(senderid) ;
+			System.out.println("now sender uri is " + sender_uri) ;
 			if(sender_uri == null) sender_uri = prefix + "sender/" + UUID.randomUUID().toString() ;
 			add_sender(sender_uri, true) ;
+		}
+		if(domain_uri != null){
+			System.out.println("domain uri exists...") ;
+			add_exp_domain(domain_uri, false) ;
+		}else{
+			System.out.println("domain uri is null...") ;
+			domain_uri = domain_exist(domain) ;
+			System.out.println("now domain uri is " + domain_uri) ;
+			if(domain_uri == null) domain_uri = prefix + "domain/" + UUID.randomUUID().toString() ;
+			add_exp_domain(domain_uri, true) ;
 		}
 
 		add_timestamp() ;
@@ -198,7 +204,7 @@ public class ClientHandler implements Runnable {
 		//later
 	}
 	
-	private void add_domain(String domain_uri, boolean new_domain){
+	private void add_exp_domain(String domain_uri, boolean new_domain){
 		for (int i=0;i<triples.size();i++){
 			String subject = triples.get(i).get("subject") ;
 			String predicate = triples.get(i).get("predicate") ;
@@ -220,9 +226,9 @@ public class ClientHandler implements Runnable {
 			String predicate = triples.get(i).get("predicate") ;
 			String object = triples.get(i).get("object") ;
 			if(predicate.matches("rdf:type") && object.contains("Measurement") && !object.contains("MeasurementData")){
-				addToRDFModel(subject, Omn_monitoring.sentBy, sender_uri) ;
+				addToRDFModel(subject, Omn_monitoring.sentFrom, sender_uri) ;
 				if(new_sender){
-					addToRDFModel(sender_uri, RDF.type, Omn_monitoring.Tool) ;
+					addToRDFModel(sender_uri, RDF.type, Omn_federation.Infrastructure) ;
 					addToRDFModel(sender_uri, RDFS.label, senderid) ;
 				}
 			}
@@ -239,7 +245,9 @@ public class ClientHandler implements Runnable {
 				addToRDFModel(subject, 
 						omn_monitoring + "elapsedTimeAtClientSinceExperimentStarted", triples.get(i).get("client_timestamp")) ;		
 				// add server ts
-				server_ts = "0" ;
+				double now_in_ms = System.currentTimeMillis() ;
+				double server_timestamp = now_in_ms/1000.0 - Long.parseLong(starttime) ;
+				server_ts = String.valueOf(server_timestamp) ;
 				addToRDFModel(subject, 
 						omn_monitoring + "elapsedTimeAtServerSinceExperimentStarted", server_ts) ;		
 			}
@@ -248,15 +256,13 @@ public class ClientHandler implements Runnable {
 	
 	private void add_starttime(String domain_uri){
 		if(service_uri == null){
-			service_uri = service_exist(domain_uri) ;
+			service_uri = service_exist(domain_uri, sender_uri) ;
 			if(service_uri == null) service_uri = prefix + UUID.randomUUID().toString() ;
 			addToRDFModel(domain_uri, Omn.hasService, service_uri) ;
 			addToRDFModel(service_uri,RDF.type, Omn_monitoring.MonitoringService) ;
+			addToRDFModel(service_uri,Omn.isServiceOf, sender_uri) ;
 			addToRDFModel(service_uri, Omn_lifecycle.startTime, starttime) ;
-		}else{
-			addToRDFModel(domain_uri, Omn.hasService, service_uri) ;
-			//addToRDFModel(service_uri, Omn_lifecycle.startTime, starttime) ;	
-		}		
+		}	
 	}
 	
 	private void add_seqNo(){
@@ -275,8 +281,41 @@ public class ClientHandler implements Runnable {
 		if(line.split("\\s+").length > 3) return false ; else return true ;
 	}
 	
+	/*private void query_database(String label_sender, String label_domain){
+		String existingValue = "?measurement <http://open-multinet.info/ontology/omn-monitoring#sentFrom> ?sender . " + 
+				"?sender <http://www.w3.org/2000/01/rdf-schema#label> ?label_sender . " + 
+				"?sender <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://open-multinet.info/ontology/omn-federation#Infrastructure> . " +
+				"?measurement <http://open-multinet.info/ontology/omn-monitoring#sentFrom> ?domain . " +
+				"?domain <http://www.w3.org/2000/01/rdf-schema#label> ?label_domain . " + 
+				"?domain <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://open-multinet.info/ontology/omn-monitoring-genericconcepts#MonitoringDomain> . " +
+				"?domain <http://open-multinet.info/ontology/omn#hasService> ?service . " +
+				"?service <http://open-multinet.info/ontology/omn-lifecycle#StartTime> ?value . " ;
+		
+		String filter = "filter(regex(?label_sender,\"" + label_sender + "\")) . " + 
+				"filter(regex(?label_domain,\"" + label_domain + "\")) . "	;
+		
+		String queryString = "SELECT ?sender ?domain ?service ?value " + "WHERE { "+existingValue+ " " + filter + " }";
+		try {
+			ResultSet rs = QueryExecuter.executeSparqlSelectQuery(queryString);
+			if(rs.hasNext()){
+				QuerySolution row = rs.next();
+				domain_uri = row.get("domain").toString() ;		
+				sender_uri = row.get("sender").toString() ;
+				service_uri = row.get("service").toString() ;
+				starttime = row.getLiteral("value").getString() ;
+				System.out.println("after querying..") ;
+				System.out.println(domain_uri + sender_uri + service_uri + starttime) ;
+			}
+			
+		} catch (org.fiteagle.api.tripletStoreAccessor.TripletStoreAccessor.ResourceRepositoryException e) {
+			LOGGER.log(Level.SEVERE, "Could not query triple store.");
+		}
+	}*/
+		
+	
 	private String domain_exist(String label){
-		String existingValue = "?domain <http://www.w3.org/2000/01/rdf-schema#label> ?label .";
+		String existingValue = "?domain <http://www.w3.org/2000/01/rdf-schema#label> ?label . " +
+				"?domain <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://open-multinet.info/ontology/omn-monitoring-genericconcepts#MonitoringDomain> . ";
 		String filter = "filter(regex(?label,\"" + label + "\")) ." ;
 		
 	    String queryString = "SELECT ?domain " + "WHERE { "+existingValue+ " " + filter + " }";
@@ -284,7 +323,8 @@ public class ClientHandler implements Runnable {
 			ResultSet rs = QueryExecuter.executeSparqlSelectQuery(queryString);
 			if(rs.hasNext()){
 				QuerySolution row = rs.next();
-				RDFNode value = row.get("domain");		
+				RDFNode value = row.get("domain");	
+				System.out.println("domain_exist: domain is " + value.toString()) ;
 				return value.toString() ;
 			}else return null ; 
 			
@@ -296,7 +336,8 @@ public class ClientHandler implements Runnable {
 	}
 	
 	private String sender_exist(String label){
-		String existingValue = "?sender <http://www.w3.org/2000/01/rdf-schema#label> ?label .";
+		String existingValue = "?sender <http://www.w3.org/2000/01/rdf-schema#label> ?label ." +
+				"?sender <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://open-multinet.info/ontology/omn-federation#Infrastructure> . ";
 		String filter = "filter(regex(?label,\"" + label + "\")) ." ;
 		
 	    String queryString = "SELECT ?sender " + "WHERE { "+existingValue+ " " + filter + " }";
@@ -304,7 +345,8 @@ public class ClientHandler implements Runnable {
 			ResultSet rs = QueryExecuter.executeSparqlSelectQuery(queryString);
 			if(rs.hasNext()){
 				QuerySolution row = rs.next();
-				RDFNode value = row.get("sender");		
+				RDFNode value = row.get("sender");	
+				System.out.println("sender_exist: sender is " + value.toString()) ;
 				return value.toString() ;
 			}else return null ; 
 			
@@ -314,8 +356,8 @@ public class ClientHandler implements Runnable {
 		return null ;
 	}
 		
-	private String starttime_exist(String sender){
-		/*String existingValue = "?measurement <http://open-multinet.info/ontology/omn-monitoring#sentBy> ?sender . " + 
+	/*private String starttime_exist(String sender){
+		String existingValue = "?measurement <http://open-multinet.info/ontology/omn-monitoring#sentBy> ?sender . " + 
 					"?sender <http://www.w3.org/2000/01/rdf-schema#label> ?label ." + 
 					"?measurement <http://open-multinet.info/ontology/omn-monitoring#sentFrom> ?domain . " +
 					"?domain <http://open-multinet.info/ontology/omn#hasService> ?service . " +
@@ -333,12 +375,13 @@ public class ClientHandler implements Runnable {
 			
 		} catch (org.fiteagle.api.tripletStoreAccessor.TripletStoreAccessor.ResourceRepositoryException e) {
 			LOGGER.log(Level.SEVERE, "Could not query triple store.");
-		}*/
+		}
 		return null ;
-	}
+	}*/
 	
-	private String service_exist(String domain_uri){
-		String existingValue = "<" +domain_uri+ "> <http://open-multinet.info/ontology/omn#hasService> ?service .";
+	private String service_exist(String domain_uri,String sender_uri){
+		String existingValue = "<" +domain_uri+ "> <http://open-multinet.info/ontology/omn#hasService> ?service . " +
+				"?service <http://open-multinet.info/ontology/omn#isServiceOf> <" + sender_uri + "> . " ;
 		
 	    String queryString = "SELECT ?service " + "WHERE { "+existingValue+ " }";
 		try {
@@ -346,6 +389,7 @@ public class ClientHandler implements Runnable {
 			if(rs.hasNext()){
 				QuerySolution row = rs.next();
 				RDFNode value = row.get("service");		
+				System.out.println("service_exist: service is " + value.toString()) ;
 				return value.toString() ;
 			}else return null ; 
 			
