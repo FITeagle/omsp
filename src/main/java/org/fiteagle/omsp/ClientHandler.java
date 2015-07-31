@@ -11,6 +11,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.Socket;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -84,12 +86,15 @@ public class ClientHandler implements Runnable {
 
 	@Override
     public void run() {
+		BufferedReader input ;
 		try{				
-			BufferedReader input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+			input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 			String s = null ;
 			boolean EndOfHeader = false ;
+			//socket.setSoTimeout(35000) ;
 			
 			while ((s = input.readLine())!= null){
+				System.out.println("Incoming stream...processing...") ;
 				if(!s.isEmpty() && !EndOfHeader){
 					if(!process_header(s)){
 						LOGGER.log(Level.SEVERE, "Could not process stream header.");
@@ -103,49 +108,45 @@ public class ClientHandler implements Runnable {
 				}else if(s.isEmpty()){
 					EndOfHeader = true ;
 				}else if(!s.isEmpty() && EndOfHeader && EndOfStream(s)){
-					process_stream() ;
+					if(!process_stream()){
+						LOGGER.log(Level.SEVERE, "Could not process stream.");
+					}
 					triples.clear() ;
 				}
-			}			
-			return ;
-		}catch (IOException e) {
+				System.out.println("waiting for next stream") ;
+			}
+			input.close() ;
+			socket.close() ;
+			
+        }catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Could not read the incoming stream.");
             return ;
+        }finally{
+    		Thread.currentThread().interrupt();
         }
+		return ;
 	}
 
 	private boolean process_header(String line){
-		System.out.println("ClientHandler: Processing header...") ;
-		System.out.println(line) ;
 		try{
 			if(line.contains("domain")){
-				System.out.println("checking domain") ;
 				domain = line.split(":")[1].replaceAll("\\s","") ;
-				System.out.println("domain added") ;
 			}
 			else if(line.contains("start-time") || line.contains("start_time")){
-				System.out.println("checking starttime") ;
 				starttime = line.split(":")[1].replaceAll("\\s","") ;
-				System.out.println("starttime added") ;
 			}
 			else if(line.contains("sender-id") || line.contains("sender_id")){
-				System.out.println("checking senderid") ;
 				senderid = line.split(":")[1].replaceAll("\\s","") ;
-				System.out.println("senderid added") ;
 			}
 			else if(line.contains("app-name") || line.contains("app_name")){
-				System.out.println("checking appname") ;
 				appname = line.split(":")[1].replaceAll("\\s","") ;
-				System.out.println("appname added") ;
 			}
 			else if(line.contains("schema") && line.contains("1")){
-				System.out.println("checking schema") ;
 				String[] list = line.split(":",2)[1].split(" ") ;
 				if(list.length != 6) return false ;			
 				for (int i=3;i<list.length;i++){
 					if(!list[i].split(":")[1].matches("string")) return false ;
 				}
-				System.out.println("schema verified") ;
 			}
 		}catch(PatternSyntaxException e){
 			return false ;
@@ -155,7 +156,6 @@ public class ClientHandler implements Runnable {
 	}
 
 	public boolean process_text(String line){
-		System.out.println("Processing data...") ;
 		String[] values ;
 		
 		values = line.split("\\s+") ;
@@ -165,7 +165,6 @@ public class ClientHandler implements Runnable {
 		triple.put("predicate", values[values.length-2]) ;
 		triple.put("object", values[values.length-1]) ;
 		triples.add(triple) ;
-		System.out.println(triple.get("subject") + " " + triple.get("predicate") + " " + triple.get("object")) ;
 		if(!addToRDFModel(triple.get("subject"),triple.get("predicate"),triple.get("object"))) return false ;
 		
 		return true ;
@@ -173,29 +172,23 @@ public class ClientHandler implements Runnable {
 	
 	public boolean process_stream(){
 		if(sender_uri != null){
-			System.out.println("sender uri exists...") ;
 			add_sender(sender_uri, false) ;
 		}else{
-			System.out.println("sender uri is null...") ;
 			sender_uri = sender_exist(senderid) ;
-			System.out.println("now sender uri is " + sender_uri) ;
-			if(sender_uri == null) sender_uri = prefix + "sender/" + UUID.randomUUID().toString() ;
+			if(sender_uri == null) sender_uri = prefix + "sender/" + domain + "_" + senderid ;
 			add_sender(sender_uri, true) ;
 		}
 		if(domain_uri != null){
-			System.out.println("domain uri exists...") ;
 			add_exp_domain(domain_uri, false) ;
 		}else{
-			System.out.println("domain uri is null...") ;
 			domain_uri = domain_exist(domain) ;
-			System.out.println("now domain uri is " + domain_uri) ;
-			if(domain_uri == null) domain_uri = prefix + "domain/" + UUID.randomUUID().toString() ;
+			if(domain_uri == null) domain_uri = prefix + "domain/" + domain ;
 			add_exp_domain(domain_uri, true) ;
 		}
 
 		add_timestamp() ;
 		add_seqNo() ;
-			
+		LOGGER.log(Level.INFO, "Stream processed. Creating INFORM message...");
 		omspi.createInformMsg(model) ;
 		return true ;
 	}
@@ -241,15 +234,13 @@ public class ClientHandler implements Runnable {
 			String predicate = triples.get(i).get("predicate") ;
 			String object = triples.get(i).get("object") ;
 			if(predicate.matches("rdf:type") && object.contains("Measurement") && !object.contains("MeasurementData")){
-				// add client ts
 				addToRDFModel(subject, 
-						omn_monitoring + "elapsedTimeAtClientSinceExperimentStarted", triples.get(i).get("client_timestamp")) ;		
-				// add server ts
+						omn_monitoring + "elapsedTimeAtClientSinceExperimentStartedInSeconds", triples.get(i).get("client_timestamp")) ;		
 				double now_in_ms = System.currentTimeMillis() ;
 				double server_timestamp = now_in_ms/1000.0 - Long.parseLong(starttime) ;
 				server_ts = String.valueOf(server_timestamp) ;
 				addToRDFModel(subject, 
-						omn_monitoring + "elapsedTimeAtServerSinceExperimentStarted", server_ts) ;		
+						omn_monitoring + "elapsedTimeAtServerSinceExperimentStartedInSeconds", server_ts) ;		
 			}
 		}
 	}
@@ -257,7 +248,7 @@ public class ClientHandler implements Runnable {
 	private void add_starttime(String domain_uri){
 		if(service_uri == null){
 			service_uri = service_exist(domain_uri, sender_uri) ;
-			if(service_uri == null) service_uri = prefix + UUID.randomUUID().toString() ;
+			if(service_uri == null) service_uri = prefix + "monitoring_service/" + appname + "_" + domain + "_" + senderid ;
 			addToRDFModel(domain_uri, Omn.hasService, service_uri) ;
 			addToRDFModel(service_uri,RDF.type, Omn_monitoring.MonitoringService) ;
 			addToRDFModel(service_uri,Omn.isServiceOf, sender_uri) ;
@@ -324,7 +315,6 @@ public class ClientHandler implements Runnable {
 			if(rs.hasNext()){
 				QuerySolution row = rs.next();
 				RDFNode value = row.get("domain");	
-				System.out.println("domain_exist: domain is " + value.toString()) ;
 				return value.toString() ;
 			}else return null ; 
 			
@@ -346,7 +336,6 @@ public class ClientHandler implements Runnable {
 			if(rs.hasNext()){
 				QuerySolution row = rs.next();
 				RDFNode value = row.get("sender");	
-				System.out.println("sender_exist: sender is " + value.toString()) ;
 				return value.toString() ;
 			}else return null ; 
 			
@@ -389,7 +378,6 @@ public class ClientHandler implements Runnable {
 			if(rs.hasNext()){
 				QuerySolution row = rs.next();
 				RDFNode value = row.get("service");		
-				System.out.println("service_exist: service is " + value.toString()) ;
 				return value.toString() ;
 			}else return null ; 
 			
