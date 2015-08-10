@@ -96,7 +96,7 @@ public class Wrapper {
 				getPropValue("oml_domain"), getPropValue("oml_sender"), 
 				getPropValue("oml_collector_uri"));
 		//zabbix
-		zabbix_url = getPropValue("oml_app_name") ;
+		zabbix_url = getPropValue("zabbix_uri") ;
 		ZabbixApi zabbixApi = new DefaultZabbixApi(zabbix_url);
         zabbixApi.init();
         boolean login = zabbixApi.login(getPropValue("zabbix_username"), getPropValue("zabbix_password"));
