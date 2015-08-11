@@ -3,7 +3,11 @@ package org.fiteagle.omsp.wrapper;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.sql.* ;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -50,7 +54,6 @@ public class Wrapper {
 			    	System.err.println("Connection failed");
 			    }
 	    	}catch(Exception e){
-	    		e.getStackTrace() ;
 	    		System.err.println("Connection failed");
 	    	}
 	    }
@@ -158,7 +161,7 @@ public class Wrapper {
 		System.out.println("Starting wrapper...");
 		Wrapper wrapper = new Wrapper() ;
 		List<List<String>> rows = fetch_data_from_sql(wrapper) ;
-
+		System.out.println("data fetched from SQLite...");
 		ArrayList<OMLMPFieldDef> mp = new ArrayList<OMLMPFieldDef>();
 		mp.add(new OMLMPFieldDef("subject",OMLTypes.OML_STRING_VALUE));
 		mp.add(new OMLMPFieldDef("predicate",OMLTypes.OML_STRING_VALUE));
@@ -172,7 +175,6 @@ public class Wrapper {
 	        for (List<String> row : rows){
 		        //get host id
 		        String host = row.get(0);
-		        System.out.println(host);
 		        JSONObject filter = new JSONObject();
 		
 		        filter.put("name", new String[] { host });
@@ -180,9 +182,11 @@ public class Wrapper {
 		        		.method("host.get").paramEntry("filter", filter)
 		        		.paramEntry("output", "extend").build();
 		        JSONObject getResponse = zabbixApi.call(getRequest);
+		        System.err.println(getResponse);
 		        String hostid = getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("hostid");
-
+		        System.err.println(hostid);
+		
 		        //get metrics
 		        //total memory
 		        JSONObject name = new JSONObject();	
@@ -192,10 +196,13 @@ public class Wrapper {
 		                .paramEntry("hostids", hostid).paramEntry("output", "extend")
 		                .build();
 		        getResponse = zabbixApi.call(getRequest);
+		        System.err.println(getResponse);
 		        float totalmemory = Float.valueOf(getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("lastvalue")) / (float) Math.pow(1000, 3) ;
-		        int totalmemory_ts = Integer.valueOf(getResponse.getJSONArray("result")
+		        System.err.println(totalmemory) ;
+		        float totalmemory_ts = Integer.valueOf(getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("lastclock")) ;
+		        System.out.println(totalmemory_ts) ;
 		        
 		      //used memory
 		        name = new JSONObject();	
@@ -205,10 +212,13 @@ public class Wrapper {
 		                .paramEntry("hostids", hostid).paramEntry("output", "extend")
 		                .build();
 		        getResponse = zabbixApi.call(getRequest);
+		        System.err.println(getResponse);
 		        float usedmemory = Float.valueOf(getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("lastvalue")) / (float) Math.pow(1000, 3) ;
-		        int usedmemory_ts = Integer.valueOf(getResponse.getJSONArray("result")
+		        System.err.println(usedmemory) ;
+		        float usedmemory_ts = Integer.valueOf(getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("lastclock")) ;
+		        System.out.println(usedmemory_ts) ;
 		        
 		      //available memory
 		        name = new JSONObject();	
@@ -218,10 +228,13 @@ public class Wrapper {
 		                .paramEntry("hostids", hostid).paramEntry("output", "extend")
 		                .build();
 		        getResponse = zabbixApi.call(getRequest);
+		        System.err.println(getResponse);
 		        float availablememory = Float.valueOf(getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("lastvalue")) / (float) Math.pow(1000, 3) ;
-		        int availablememory_ts = Integer.valueOf(getResponse.getJSONArray("result")
+		        System.err.println(availablememory) ;
+		        float availablememory_ts = Integer.valueOf(getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("lastclock")) ;
+		        System.out.println(availablememory_ts) ;
 		        
 		      //used bandwidth
 		        name = new JSONObject();	
@@ -231,10 +244,13 @@ public class Wrapper {
 		                .paramEntry("hostids", hostid).paramEntry("output", "extend")
 		                .build();
 		        getResponse = zabbixApi.call(getRequest);
+		        System.err.println(getResponse);
 		        float usedbandwidth = Float.valueOf(getResponse.getJSONArray("result")
-		                .getJSONObject(0).getString("lastvalue")) / (float) Math.pow(1000, 2) ;
-		        int usedbandwidth_ts = Integer.valueOf(getResponse.getJSONArray("result")
+		                .getJSONObject(0).getString("lastvalue")) / (float) Math.pow(1000, 3) ;
+		        System.err.println(usedbandwidth) ;
+		        float usedbandwidth_ts = Integer.valueOf(getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("lastclock")) ;
+		        System.out.println(usedbandwidth_ts) ;
 		        
 		        String prefix = "http://localhost/" ;
 		        String rand_id = UUID.randomUUID().toString() ;
