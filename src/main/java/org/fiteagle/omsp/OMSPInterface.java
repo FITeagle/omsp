@@ -6,6 +6,7 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.annotation.PostConstruct;
@@ -43,11 +44,11 @@ public class OMSPInterface {
 		int portNr = 3030 ;
 		try{
 			ServerSocket serverSocket = new ServerSocket(portNr);
-			System.out.println("Listening at port " + portNr);
+			LOGGER.log(Level.INFO, "Listening at port " + portNr);
 			
 			while(true){			
 				Socket clientSocket = serverSocket.accept();
-				System.out.println("Connected with a client.");
+				LOGGER.log(Level.INFO, "Connected with a client.");
 
 				this.clienthandler = new ClientHandler(clientSocket) ;
 				clienthandler.setOmspI(this) ;
@@ -55,12 +56,11 @@ public class OMSPInterface {
 		    	Thread  clientHandlerThread = threadFactory.newThread(clienthandler);
       			clientHandlerThread.start();
       			
-      			System.out.println("Thread started..");
-				System.out.println("Listening for another incoming client...");
+      			LOGGER.log(Level.INFO, "Thread started..");
 			}
 
 		}catch (IOException e) {
-            System.err.println("Could not listen on port " + portNr);
+			LOGGER.log(Level.SEVERE, "Could not listen on port " + portNr);
             System.exit(-1);
         }catch (NamingException e) {
 			// TODO Auto-generated catch block
@@ -70,15 +70,13 @@ public class OMSPInterface {
 	
 	public void createInformMsg(Model model){	
 		try{
-			System.out.println("OMSPInterface: Creating inform message...");
 			if(!model.isEmpty()){
 				final Message request = MessageUtil.createRDFMessage(model, IMessageBus.TYPE_INFORM, IMessageBus.TARGET_ORCHESTRATOR, IMessageBus.SERIALIZATION_TURTLE, null, context);
 				context.createProducer().send(topic, request);
-				System.out.println("OMSPInterface: Sending inform message... ");
+				LOGGER.log(Level.INFO, "INFORM message has been sent.");
 			}
 		}catch(Exception e){
-			System.err.println("OMSPInterface: Could not create inform message.");
-			e.printStackTrace();
+			LOGGER.log(Level.SEVERE, "Could not create INFORM message.");
 		}
 	}
 

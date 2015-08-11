@@ -3,11 +3,7 @@ package org.fiteagle.omsp.wrapper;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.* ;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -48,12 +44,13 @@ public class Wrapper {
 	    	try{
 			    init(sDriverKey, sUrlKey);
 			    if(c != null){
-			    	System.out.println("SQLite: Connected OK using " + sDriverKey + " to " + sUrlKey);
+			    	System.out.println("SQLite: Connected OK");
 			    }
 			    else{
 			    	System.err.println("Connection failed");
 			    }
 	    	}catch(Exception e){
+	    		e.getStackTrace() ;
 	    		System.err.println("Connection failed");
 	    	}
 	    }
@@ -81,10 +78,21 @@ public class Wrapper {
 	        stmt.setQueryTimeout(iTimeout);  // set timeout to 30 sec.
 	    }
 	    
-	    private void setConnection() throws Exception {
-	    	Class.forName(sDriver);
-	        c = DriverManager.getConnection(sUrl);	
-		}
+	    private void setConnection() {
+	    	try {
+	    		Class.forName(sDriver);
+	    	}catch(ClassNotFoundException ex) {
+	    		ex.printStackTrace() ;
+	    		System.err.println("Error: unable to load driver class");
+	    		System.exit(1);
+	    	}
+		    try{
+	    		c = DriverManager.getConnection(sUrl);
+	    	}catch(SQLException ex) {
+	    		System.err.println("Error: Unable to connect to database");
+	    		System.exit(1);
+	    	}	        	
+	    }
 	    
 	    public ResultSet executeQry(String instruction) throws SQLException {
 	        return stmt.executeQuery(instruction);
@@ -96,8 +104,8 @@ public class Wrapper {
 				getPropValue("oml_domain"), getPropValue("oml_sender"), 
 				getPropValue("oml_collector_uri"));
 		//zabbix
-		zabbix_url = getPropValue("oml_app_name") ;
-		ZabbixApi zabbixApi = new DefaultZabbixApi(zabbix_url);
+		zabbix_url = getPropValue("zabbix_uri") ;
+		zabbixApi = new DefaultZabbixApi(zabbix_url);
         zabbixApi.init();
         boolean login = zabbixApi.login(getPropValue("zabbix_username"), getPropValue("zabbix_password"));
         System.err.println("login:" + login);
@@ -147,10 +155,10 @@ public class Wrapper {
 	}
 	
 	public static void main(String[] args) {
-		System.out.println("starting wrapper...");
+		System.out.println("Starting wrapper...");
 		Wrapper wrapper = new Wrapper() ;
 		List<List<String>> rows = fetch_data_from_sql(wrapper) ;
-		System.out.println("data fetched from SQLite...");
+
 		ArrayList<OMLMPFieldDef> mp = new ArrayList<OMLMPFieldDef>();
 		mp.add(new OMLMPFieldDef("subject",OMLTypes.OML_STRING_VALUE));
 		mp.add(new OMLMPFieldDef("predicate",OMLTypes.OML_STRING_VALUE));
@@ -164,82 +172,69 @@ public class Wrapper {
 	        for (List<String> row : rows){
 		        //get host id
 		        String host = row.get(0);
+		        System.out.println(host);
 		        JSONObject filter = new JSONObject();
 		
 		        filter.put("name", new String[] { host });
 		        Request getRequest = RequestBuilder.newBuilder()
-		                .method("host.get").paramEntry("filter", filter)
-		                .build();
+		        		.method("host.get").paramEntry("filter", filter)
+		        		.paramEntry("output", "extend").build();
 		        JSONObject getResponse = zabbixApi.call(getRequest);
-		        System.err.println(getResponse);
 		        String hostid = getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("hostid");
-		        System.err.println(hostid);
-		
+
 		        //get metrics
 		        //total memory
 		        JSONObject name = new JSONObject();	
 		        name.put("name", new String[] { "Total memory" });
 		        getRequest = RequestBuilder.newBuilder()
-		                .method("item.get").paramEntry("search", name)
-		                .paramEntry("hostids", hostid)
+		                .method("item.get").paramEntry("filter", name)
+		                .paramEntry("hostids", hostid).paramEntry("output", "extend")
 		                .build();
 		        getResponse = zabbixApi.call(getRequest);
-		        System.err.println(getResponse);
 		        float totalmemory = Float.valueOf(getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("lastvalue")) / (float) Math.pow(1000, 3) ;
-		        System.err.println(totalmemory) ;
-		        float totalmemory_ts = Integer.valueOf(getResponse.getJSONArray("result")
+		        int totalmemory_ts = Integer.valueOf(getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("lastclock")) ;
-		        System.out.println(totalmemory_ts) ;
 		        
 		      //used memory
 		        name = new JSONObject();	
 		        name.put("name", new String[] { "Used memory" });
 		        getRequest = RequestBuilder.newBuilder()
-		                .method("item.get").paramEntry("search", name)
-		                .paramEntry("hostids", hostid)
+		                .method("item.get").paramEntry("filter", name)
+		                .paramEntry("hostids", hostid).paramEntry("output", "extend")
 		                .build();
 		        getResponse = zabbixApi.call(getRequest);
-		        System.err.println(getResponse);
 		        float usedmemory = Float.valueOf(getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("lastvalue")) / (float) Math.pow(1000, 3) ;
-		        System.err.println(usedmemory) ;
-		        float usedmemory_ts = Integer.valueOf(getResponse.getJSONArray("result")
+		        int usedmemory_ts = Integer.valueOf(getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("lastclock")) ;
-		        System.out.println(usedmemory_ts) ;
 		        
 		      //available memory
 		        name = new JSONObject();	
 		        name.put("name", new String[] { "Available memory" });
 		        getRequest = RequestBuilder.newBuilder()
-		                .method("item.get").paramEntry("search", name)
-		                .paramEntry("hostids", hostid)
+		                .method("item.get").paramEntry("filter", name)
+		                .paramEntry("hostids", hostid).paramEntry("output", "extend")
 		                .build();
 		        getResponse = zabbixApi.call(getRequest);
-		        System.err.println(getResponse);
 		        float availablememory = Float.valueOf(getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("lastvalue")) / (float) Math.pow(1000, 3) ;
-		        System.err.println(availablememory) ;
-		        float availablememory_ts = Integer.valueOf(getResponse.getJSONArray("result")
+		        int availablememory_ts = Integer.valueOf(getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("lastclock")) ;
-		        System.out.println(availablememory_ts) ;
 		        
 		      //used bandwidth
 		        name = new JSONObject();	
 		        name.put("key_", new String[] { "net.if.in[eth2]" });
 		        getRequest = RequestBuilder.newBuilder()
-		                .method("item.get").paramEntry("search", name)
-		                .paramEntry("hostids", hostid)
+		                .method("item.get").paramEntry("filter", name)
+		                .paramEntry("hostids", hostid).paramEntry("output", "extend")
 		                .build();
 		        getResponse = zabbixApi.call(getRequest);
-		        System.err.println(getResponse);
 		        float usedbandwidth = Float.valueOf(getResponse.getJSONArray("result")
-		                .getJSONObject(0).getString("lastvalue")) / (float) Math.pow(1000, 3) ;
-		        System.err.println(usedbandwidth) ;
-		        float usedbandwidth_ts = Integer.valueOf(getResponse.getJSONArray("result")
+		                .getJSONObject(0).getString("lastvalue")) / (float) Math.pow(1000, 2) ;
+		        int usedbandwidth_ts = Integer.valueOf(getResponse.getJSONArray("result")
 		                .getJSONObject(0).getString("lastclock")) ;
-		        System.out.println(usedbandwidth_ts) ;
 		        
 		        String prefix = "http://localhost/" ;
 		        String rand_id = UUID.randomUUID().toString() ;
