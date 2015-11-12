@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 # Copyright (c) 2015, Andisa Dewi, Yahya Al-Hazmi, Technische Universitaet Berlin
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License
 #
-# This wrapper reads data from SQLite database, fetches the necessary data from Zabbix and 
-# sends them to the semantic OML Server. 
+# This wrapper reads data from SQLite database, fetches the actual monitoring data from Zabbix and 
+# sends them to the semantic OML Server, serialized as RDF triples serialized in RDF Turtle format. 
 #
 # The following files are needed to be in the same directory:
 # Zabbix Library for Python (zabbix_api.py)
